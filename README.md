@@ -1,3 +1,6 @@
+# Question Answer
+[Answer](Inovace Answers.pdf)
+
 # LogSummarizer Service
 
 A Spring Boot microservice that accepts a batch of application log entries via a REST API, uses Google Gemini to perform AI-powered anomaly detection, and returns a structured JSON report of potential issues and recommendations.
