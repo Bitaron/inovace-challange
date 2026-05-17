@@ -1,5 +1,5 @@
 # Question Answer
-[Answer](Inovace Answers.pdf)
+Location: docs/Answers.pdf
 
 # LogSummarizer Service
 
