@@ -1,5 +1,6 @@
 package com.innovace.Innovacechallenge.controller;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.innovace.Innovacechallenge.dto.LogSummaryRequest;
 import com.innovace.Innovacechallenge.dto.LogSummaryResponse;
 import com.innovace.Innovacechallenge.service.LogSummarizerService;
@@ -52,7 +53,7 @@ public class LogSummarizerController {
      */
     @PostMapping("/summarize-logs")
     public ResponseEntity<LogSummaryResponse> summarizeLogs(
-            @Valid @RequestBody LogSummaryRequest request) {
+            @Valid @RequestBody LogSummaryRequest request) throws JsonProcessingException {
 
         log.info("POST /summarize-logs — received {} log entries", request.getLogs().size());
         LogSummaryResponse response = logSummarizerService.summarize(request.getLogs());

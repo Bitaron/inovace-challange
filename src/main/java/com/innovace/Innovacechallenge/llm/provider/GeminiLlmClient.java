@@ -48,7 +48,7 @@ public class GeminiLlmClient implements LlmClient {
      */
     @Override
     public String call(String systemPrompt, String userMessage) {
-        log.debug("Calling Gemini API — user message length: {} chars", userMessage.length());
+        log.info("Calling Gemini API — user message length: {} chars", userMessage.length());
         try {
             String response = chatClient.prompt()
                     .system(systemPrompt)

@@ -16,7 +16,7 @@ A Spring Boot microservice that accepts a batch of application log entries via a
 
 ## Prerequisites
 
-| Tool | Version |
+| Tool | Version |  
 |------|---------|
 | Java | 21+ |
 | Maven | 3.9+ (or use the included `./mvnw`) |
@@ -30,7 +30,7 @@ A Spring Boot microservice that accepts a batch of application log entries via a
 Edit `src/main/resources/application.properties` and set your API key:
 
 ```properties
-spring.ai.google.genai.api-key=YOUR_GEMINI_API_KEY_HERE
+spring.ai.google.genai.api-key=YOUR_GEMINI_API_KEY_HERE //If api key in default project doesn't work, create a seperate project in google ai studio
 ```
 
 To switch the LLM provider (after implementing a new `LlmClient` bean):
@@ -63,7 +63,7 @@ docker build -t log-summarizer .
 
 # 2. Run with your API key passed as an env variable
 docker run -p 8080:8080 \
-  -e SPRING_AI_GOOGLE_GENAI_API_KEY=YOUR_GEMINI_API_KEY_HERE \
+  -e SPRING_AI_GOOGLE_GENAI_API_KEY=<GEMINI_API_KEY> \
   log-summarizer
 ```
 
@@ -180,51 +180,23 @@ LlmProvider (enum)       ← catalogue of supported provider keys
 
 ### Prompt Engineering
 
-The system prompt (in `LogSummarizerService.SYSTEM_PROMPT`) is designed around three principles:
+The system prompt (in `SystemPrompt`) is designed around three principles:
 
 1. **Role framing** — "You are an expert SRE" positions the model for domain-specific reasoning rather than generic summarisation.
 2. **Output contract** — an explicit JSON schema with field names, types, and semantics eliminates ambiguity and prevents hallucination of unknown fields.
 3. **Analysis instructions** — enumerates specific patterns to look for (causal chains, bursts, cascading failures) guiding the model beyond surface-level observation.
+4. **Few shots** — example of sample logs and summaries to help the model understand the structure of the input.
+5. **Structured** — prompts are structured in xml tags for llm's better understanding.
 
-The user message wraps log lines in an `<LOGS>` XML tag block, providing a clear structural boundary that the model can parse reliably.
 
 ### Trade-offs
 
 | Decision | Trade-off |
 |----------|-----------|
 | Spring AI over raw HTTP | Hides low-level HTTP/auth; slightly less control over raw request payload |
-| Single `/summarize-logs` endpoint | Simple and per-spec; a production system could add streaming (`/summarize-logs/stream`) |
-| Synchronous call | Easiest to reason about; a high-volume system should use async + a job queue |
 | `analyzed_log_count` overwritten by service | Prevents LLM hallucination of wrong count; slight duplication of information |
 
 ---
 
 ## Full Engineered Prompt
-
-The following is the exact system prompt sent to the LLM on every request (see `LogSummarizerService.SYSTEM_PROMPT`):
-
-```
-You are an expert Site Reliability Engineer (SRE) specialising in application log analysis and anomaly detection.
-
-CRITICAL OUTPUT RULES — follow these exactly:
-1. Your ENTIRE response MUST be a single, valid JSON object.
-2. Do NOT include markdown code fences (```json or ```), explanations, or any text outside the JSON object.
-3. The JSON MUST conform strictly to this schema:
-   {
-     "summary":              "<string: one-paragraph narrative of the root cause or system health>",
-     "key_error_signatures": ["<string: distinct error pattern>", ...],
-     "recommendation":       "<string: concrete, actionable next steps for an on-call engineer>",
-     "analyzed_log_count":   <integer: exact number of log entries you received>
-   }
-4. All four fields are required. Do not omit or rename them.
-
-ANALYSIS INSTRUCTIONS:
-- Identify recurring ERROR or WARN messages and group them into distinct error signatures.
-- Look for causal chains across services (e.g., database timeouts → downstream payment failures).
-- Detect anomalies: bursts of errors from a single service, mixed severity spikes, or unusual timing patterns.
-- Note which microservices are affected and whether failures appear isolated or cascading.
-- If all logs are INFO level with no issues, state "System appears healthy" in the summary and return an empty array for key_error_signatures.
-- Be concise but precise: include service names, error types, and relevant time windows.
-```
-
-The user message appends the formatted log lines wrapped in `<LOGS>…</LOGS>` tags.
+Full prompt: [System Prompt](src/main/java/com/innovace/Innovacechallenge/service/SystemPrompt.java)

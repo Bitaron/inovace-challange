@@ -1,5 +1,6 @@
 package com.innovace.Innovacechallenge.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.innovace.Innovacechallenge.dto.LogEntry;
 import com.innovace.Innovacechallenge.dto.LogSummaryResponse;
@@ -8,6 +9,7 @@ import com.innovace.Innovacechallenge.llm.LlmClient;
 import com.innovace.Innovacechallenge.llm.LlmClientFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -25,55 +27,11 @@ import java.util.List;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class LogSummarizerService {
 
-    // -----------------------------------------------------------------------
-    // Engineered system prompt
-    // -----------------------------------------------------------------------
-    /**
-     * System-level instructions sent to every LLM call.
-     *
-     * <p>Design goals:
-     * <ul>
-     *   <li><b>Role framing</b>: positions the model as an SRE specialist to elicit
-     *       domain-specific reasoning.</li>
-     *   <li><b>Strict JSON-only output</b>: prevents markdown fences or prose that
-     *       would break JSON deserialization.</li>
-     *   <li><b>Explicit schema</b>: reduces hallucination of unknown fields.</li>
-     *   <li><b>Low temperature</b>: configured in properties (0.2) for deterministic output.</li>
-     * </ul>
-     */
-    static final String SYSTEM_PROMPT = """
-            You are an expert Site Reliability Engineer (SRE) specialising in application log analysis and anomaly detection.
-
-            CRITICAL OUTPUT RULES — follow these exactly:
-            1. Your ENTIRE response MUST be a single, valid JSON object.
-            2. Do NOT include markdown code fences (```json or ```), explanations, or any text outside the JSON object.
-            3. The JSON MUST conform strictly to this schema:
-               {
-                 "summary":              "<string: one-paragraph narrative of the root cause or system health>",
-                 "key_error_signatures": ["<string: distinct error pattern>", ...],
-                 "recommendation":       "<string: concrete, actionable next steps for an on-call engineer>",
-                 "analyzed_log_count":   <integer: exact number of log entries you received>
-               }
-            4. All four fields are required. Do not omit or rename them.
-
-            ANALYSIS INSTRUCTIONS:
-            - Identify recurring ERROR or WARN messages and group them into distinct error signatures.
-            - Look for causal chains across services (e.g., database timeouts → downstream payment failures).
-            - Detect anomalies: bursts of errors from a single service, mixed severity spikes, or unusual timing patterns.
-            - Note which microservices are affected and whether failures appear isolated or cascading.
-            - If all logs are INFO level with no issues, state "System appears healthy" in the summary and return an empty array for key_error_signatures.
-            - Be concise but precise: include service names, error types, and relevant time windows.
-            """;
-
-    // -----------------------------------------------------------------------
-    // Dependencies
-    // -----------------------------------------------------------------------
-
-    private final LlmClientFactory llmClientFactory;
-    private final ObjectMapper objectMapper;
+    @Autowired
+    private LlmClientFactory llmClientFactory;
+    private ObjectMapper objectMapper = new ObjectMapper();
 
     // -----------------------------------------------------------------------
     // Public API
@@ -84,17 +42,18 @@ public class LogSummarizerService {
      *
      * @param logs non-empty list of log entries (already validated by the controller)
      * @return structured summary from the LLM
-     * @throws com.innovace.Innovacechallenge.exception.LlmCallException    if the LLM API call fails
-     * @throws LlmParsingException if the LLM response cannot be parsed
+     * @throws com.innovace.Innovacechallenge.exception.LlmCallException if the LLM API call fails
+     * @throws LlmParsingException                                       if the LLM response cannot be parsed
      */
-    public LogSummaryResponse summarize(List<LogEntry> logs) {
+    public LogSummaryResponse summarize(List<LogEntry> logs) throws JsonProcessingException {
         log.info("Starting log analysis for {} log entries", logs.size());
 
         LlmClient client = llmClientFactory.getClient();
         String userMessage = buildUserMessage(logs);
 
-        String rawResponse = client.call(SYSTEM_PROMPT, userMessage);
-        log.debug("Raw LLM response: {}", rawResponse);
+        log.info("Raw LLM request: {}", userMessage);
+        String rawResponse = client.call(SystemPrompt.SYSTEM_PROMPT, userMessage);
+        log.info("Raw LLM response: {}", rawResponse);
 
         LogSummaryResponse response = parseResponse(rawResponse, logs.size());
 
@@ -113,23 +72,13 @@ public class LogSummarizerService {
     /**
      * Builds the user-facing message that contains the formatted log lines.
      */
-    private String buildUserMessage(List<LogEntry> logs) {
+    private String buildUserMessage(List<LogEntry> logs) throws JsonProcessingException {
         StringBuilder sb = new StringBuilder();
         sb.append("Analyze the following ").append(logs.size())
-          .append(" application log entries and return the JSON anomaly report.\n\n")
-          .append("<LOGS>\n");
-
-        for (int i = 0; i < logs.size(); i++) {
-            LogEntry entry = logs.get(i);
-            sb.append(String.format("[%d] %s | %-5s | %-30s | %s%n",
-                    i + 1,
-                    entry.getTimestamp(),
-                    entry.getLevel(),
-                    entry.getService(),
-                    entry.getMessage()));
-        }
-
-        sb.append("</LOGS>");
+                .append(" application log entries and return the JSON anomaly report.\n\n")
+                .append("<input>\n")
+                .append(objectMapper.writeValueAsString(logs))
+                .append("</input>");
         return sb.toString();
     }
 

@@ -50,7 +50,7 @@ public class LlmClientFactory {
      * @throws UnsupportedLlmProviderException if {@code app.llm.provider} does not match
      *         any registered provider
      */
-    public LlmClient getClient() {
+    public LlmClient  getClient() {
         String providerKey = properties.getProvider();
         LlmClient client = registry.get(providerKey);
 
